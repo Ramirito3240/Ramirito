@@ -3,9 +3,9 @@ local Material = loadstring(game:HttpGet("https://raw.githubusercontent.com/Kinl
 local X = Material.Load({
 	Title = "Ramirito",
 	Style = 3,
-	SizeX = 200,
-	SizeY = 320,
-	Theme = "Dark",
+	SizeX = 140,
+	SizeY = 290,
+	Theme = "Aqua",
 	ColorOverrides = {
 		MainFrame = Color3.fromRGB(235,235,235)
 	}
@@ -18,259 +18,75 @@ local Y = X.New({
 local A = Y.Button({
 	Text = "AIMBOT",
 	Callback = function()
---// Cache
+local fov = 150
+local smoothing = 1
+local teamCheck = false -- Cambiado para que sea configurable
 
-		local select = select
-		local pcall, getgenv, next, Vector2, mathclamp, type, mousemoverel = select(1, pcall, getgenv, next, Vector2.new, math.clamp, type, mousemoverel or (Input and Input.MouseMove))
+local RunService = game:GetService("RunService")
 
-		--// Preventing Multiple Processes
+local FOVring = Drawing.new("Circle")
+FOVring.Visible = true
+FOVring.Thickness = 1.5
+FOVring.Radius = fov
+FOVring.Transparency = 1
+FOVring.Color = Color3.fromRGB(255, 128, 128)
+FOVring.Position = workspace.CurrentCamera.ViewportSize / 2
 
-		pcall(function()
-			getgenv().Aimbot.Functions:Exit()
-		end)
+local function getClosest(cframe)
+    local ray = Ray.new(cframe.Position, cframe.LookVector).Unit
 
-		--// Environment
+    local target = nil
+    local mag = math.huge
 
-		getgenv().Aimbot = {}
-		local Environment = getgenv().Aimbot
+    for i, v in pairs(game.Players:GetPlayers()) do
+        if v.Character and v.Character:FindFirstChild("Head") and v.Character:FindFirstChild("Humanoid") and v.Character:FindFirstChild("HumanoidRootPart") and v ~= game.Players.LocalPlayer and (v.Team ~= game.Players.LocalPlayer.Team or (not teamCheck)) then
+            local direction = (v.Character.Head.Position - ray.Origin).unit
+            local angle = math.acos(direction:Dot(ray.Direction))
 
-		--// Services
+            if angle <= math.rad(fov) then
+                local magBuf = (v.Character.Head.Position - ray:ClosestPoint(v.Character.Head.Position)).Magnitude
 
-		local RunService = game:GetService("RunService")
-		local UserInputService = game:GetService("UserInputService")
-		local TweenService = game:GetService("TweenService")
-		local Players = game:GetService("Players")
-		local Camera = workspace.CurrentCamera
-		local LocalPlayer = Players.LocalPlayer
+                if magBuf < mag then
+                    mag = magBuf
+                    target = v
+                end
+            end
+        end
+    end
 
-		--// Variables
+    return target
+end
 
-		local RequiredDistance, Typing, Running, Animation, ServiceConnections = 2000, false, false, nil, {}
+local loop
 
-		--// Script Settings
+local function onRenderStepped()
+    local UserInputService = game:GetService("UserInputService")
+    local pressed = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    local localPlay = game.Players.LocalPlayer.Character
+    local cam = workspace.CurrentCamera
+    local zz = workspace.CurrentCamera.ViewportSize / 2
 
-		Environment.Settings = {
-			Enabled = true,
-			TeamCheck = false,
-			AliveCheck = true,
-			WallCheck = false, -- Laggy
-			Sensitivity = 0, -- Animation length (in seconds) before fully locking onto target
-			ThirdPerson = false, -- Uses mousemoverel instead of CFrame to support locking in third person (could be choppy)
-			ThirdPersonSensitivity = 3, -- Boundary: 0.1 - 5
-			TriggerKey = "MouseButton1",
-			Toggle = false,
-			LockPart = "UpperTorso" -- Body part to lock on
-		}
+    if pressed then
+        local Line = Drawing.new("Line")
+        local curTar = getClosest(cam.CFrame)
+        local ssHeadPoint = cam:WorldToScreenPoint(curTar.Character.Head.Position)
+        ssHeadPoint = Vector2.new(ssHeadPoint.X, ssHeadPoint.Y)
+        if (ssHeadPoint - zz).Magnitude < fov then
+            workspace.CurrentCamera.CFrame = workspace.CurrentCamera.CFrame:Lerp(CFrame.new(cam.CFrame.Position, curTar.Character.Head.Position), smoothing)
+        end
+    end
 
-		Environment.FOVSettings = {
-			Enabled = true,
-			Visible = false,
-			Amount = 90,
-			Color = Color3.fromRGB(255, 255, 255),
-			LockedColor = Color3.fromRGB(255, 70, 70),
-			Transparency =0,
-			Sides = 60,
-			Thickness = 1,
-			Filled = false
-		}
+    if UserInputService:IsKeyDown(Enum.KeyCode.Delete) then
+        loop:Disconnect()
+        FOVring:Remove()
+    end
+end
 
-		Environment.FOVCircle = Drawing.new("Circle")
+loop = RunService.RenderStepped:Connect(onRenderStepped)
 
-		--// Functions
-
-		local function CancelLock()
-			Environment.Locked = nil
-			if Animation then Animation:Cancel() end
-			Environment.FOVCircle.Color = Environment.FOVSettings.Color
-		end
-
-		local function GetClosestPlayer()
-			if not Environment.Locked then
-				RequiredDistance = (Environment.FOVSettings.Enabled and Environment.FOVSettings.Amount or 2000)
-
-				for _, v in next, Players:GetPlayers() do
-					if v ~= LocalPlayer then
-						if v.Character and v.Character:FindFirstChild(Environment.Settings.LockPart) and v.Character:FindFirstChildOfClass("Humanoid") then
-							if Environment.Settings.TeamCheck and v.Team == LocalPlayer.Team then continue end
-							if Environment.Settings.AliveCheck and v.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then continue end
-							if Environment.Settings.WallCheck and #(Camera:GetPartsObscuringTarget({v.Character[Environment.Settings.LockPart].Position}, v.Character:GetDescendants())) > 0 then continue end
-
-							local Vector, OnScreen = Camera:WorldToViewportPoint(v.Character[Environment.Settings.LockPart].Position)
-							local Distance = (Vector2(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) - Vector2(Vector.X, Vector.Y)).Magnitude
-
-							if Distance < RequiredDistance and OnScreen then
-								RequiredDistance = Distance
-								Environment.Locked = v
-							end
-						end
-					end
-				end
-			elseif (Vector2(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y) - Vector2(Camera:WorldToViewportPoint(Environment.Locked.Character[Environment.Settings.LockPart].Position).X, Camera:WorldToViewportPoint(Environment.Locked.Character[Environment.Settings.LockPart].Position).Y)).Magnitude > RequiredDistance then
-				CancelLock()
-			end
-		end
-
-		--// Typing Check
-
-		ServiceConnections.TypingStartedConnection = UserInputService.TextBoxFocused:Connect(function()
-			Typing = true
-		end)
-
-		ServiceConnections.TypingEndedConnection = UserInputService.TextBoxFocusReleased:Connect(function()
-			Typing = false
-		end)
-
-		--// Main
-
-		local function Load()
-			ServiceConnections.RenderSteppedConnection = RunService.RenderStepped:Connect(function()
-				if Environment.FOVSettings.Enabled and Environment.Settings.Enabled then
-					Environment.FOVCircle.Radius = Environment.FOVSettings.Amount
-					Environment.FOVCircle.Thickness = Environment.FOVSettings.Thickness
-					Environment.FOVCircle.Filled = Environment.FOVSettings.Filled
-					Environment.FOVCircle.NumSides = Environment.FOVSettings.Sides
-					Environment.FOVCircle.Color = Environment.FOVSettings.Color
-					Environment.FOVCircle.Transparency = Environment.FOVSettings.Transparency
-					Environment.FOVCircle.Visible = Environment.FOVSettings.Visible
-					Environment.FOVCircle.Position = Vector2(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
-				else
-					Environment.FOVCircle.Visible = false
-				end
-
-				if Running and Environment.Settings.Enabled then
-					GetClosestPlayer()
-
-					if Environment.Locked then
-						if Environment.Settings.ThirdPerson then
-							Environment.Settings.ThirdPersonSensitivity = mathclamp(Environment.Settings.ThirdPersonSensitivity, 0.1, 5)
-
-							local Vector = Camera:WorldToViewportPoint(Environment.Locked.Character[Environment.Settings.LockPart].Position)
-							mousemoverel((Vector.X - UserInputService:GetMouseLocation().X) * Environment.Settings.ThirdPersonSensitivity, (Vector.Y - UserInputService:GetMouseLocation().Y) * Environment.Settings.ThirdPersonSensitivity)
-						else
-							if Environment.Settings.Sensitivity > 0 then
-								Animation = TweenService:Create(Camera, TweenInfo.new(Environment.Settings.Sensitivity, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = CFrame.new(Camera.CFrame.Position, Environment.Locked.Character[Environment.Settings.LockPart].Position)})
-								Animation:Play()
-							else
-								Camera.CFrame = CFrame.new(Camera.CFrame.Position, Environment.Locked.Character[Environment.Settings.LockPart].Position)
-							end
-						end
-
-						Environment.FOVCircle.Color = Environment.FOVSettings.LockedColor
-
-					end
-				end
-			end)
-
-			ServiceConnections.InputBeganConnection = UserInputService.InputBegan:Connect(function(Input)
-				if not Typing then
-					pcall(function()
-						if Input.KeyCode == Enum.KeyCode[Environment.Settings.TriggerKey] then
-							if Environment.Settings.Toggle then
-								Running = not Running
-
-								if not Running then
-									CancelLock()
-								end
-							else
-								Running = true
-							end
-						end
-					end)
-
-					pcall(function()
-						if Input.UserInputType == Enum.UserInputType[Environment.Settings.TriggerKey] then
-							if Environment.Settings.Toggle then
-								Running = not Running
-
-								if not Running then
-									CancelLock()
-								end
-							else
-								Running = true
-							end
-						end
-					end)
-				end
-			end)
-
-			ServiceConnections.InputEndedConnection = UserInputService.InputEnded:Connect(function(Input)
-				if not Typing then
-					if not Environment.Settings.Toggle then
-						pcall(function()
-							if Input.KeyCode == Enum.KeyCode[Environment.Settings.TriggerKey] then
-								Running = false; CancelLock()
-							end
-						end)
-
-						pcall(function()
-							if Input.UserInputType == Enum.UserInputType[Environment.Settings.TriggerKey] then
-								Running = false; CancelLock()
-							end
-						end)
-					end
-				end
-			end)
-		end
-
-		--// Functions
-
-		Environment.Functions = {}
-
-		function Environment.Functions:Exit()
-			for _, v in next, ServiceConnections do
-				v:Disconnect()
-			end
-
-			if Environment.FOVCircle.Remove then Environment.FOVCircle:Remove() end
-
-			getgenv().Aimbot.Functions = nil
-			getgenv().Aimbot = nil
-
-			Load = nil; GetClosestPlayer = nil; CancelLock = nil
-		end
-
-		function Environment.Functions:Restart()
-			for _, v in next, ServiceConnections do
-				v:Disconnect()
-			end
-
-			Load()
-		end
-
-		function Environment.Functions:ResetSettings()
-			Environment.Settings = {
-				Enabled = true,
-				TeamCheck = false,
-				AliveCheck = true,
-				WallCheck = false,
-				Sensitivity = 0, -- Animation length (in seconds) before fully locking onto target
-				ThirdPerson = false, -- Uses mousemoverel instead of CFrame to support locking in third person (could be choppy)
-				ThirdPersonSensitivity = 3, -- Boundary: 0.1 - 5
-				TriggerKey = "MouseButton1",
-				Toggle = false,
-				LockPart = "UpperTorso" -- Body part to lock on
-			}
-
-			Environment.FOVSettings = {
-				Enabled = false,
-				Visible = false,
-				Amount = 90,
-				Color = Color3.fromRGB(255, 255, 255),
-				LockedColor = Color3.fromRGB(255, 70, 70),
-				Transparency = 0,
-				Sides = 60,
-				Thickness = 1,
-				Filled = false
-			}
-		end
-
-		--// Load
-
-		Load()
 
 		end
 })
-
 local B = Y.Button({
 	Text = "CAFE",
 	Callback = function()
@@ -414,245 +230,6 @@ local B = Y.Button({
 		end
 })
 
-local C = Y.Button({
-	Text = "ESP",
-	Callback = function()
-
- _G.FriendColor = Color3.fromRGB(0, 0, 255)
-_G.EnemyColor = Color3.fromRGB(255, 0, 0)
-_G.UseTeamColor = false
-
---------------------------------------------------------------------------------------------
-local Holder = Instance.new("Folder", game.CoreGui)
-Holder.Name = "ESP"
-
-local Box = Instance.new("BoxHandleAdornment")
-Box.Name = "nilBox"
-Box.Size = Vector3.new(1, 2, 1)
-Box.Color3 = Color3.new(100 / 255, 100 / 255, 100 / 255)
-Box.Transparency = 0
-Box.ZIndex = 0
-Box.AlwaysOnTop = true
-Box.Visible = false
---------------------------------------------------------------------------------------------
-local NameTag = Instance.new("BillboardGui")
-NameTag.Name = "nilNameTag"
-NameTag.Enabled = false
-NameTag.Size = UDim2.new(0, 200, 0, 50)
-NameTag.AlwaysOnTop = true
-NameTag.StudsOffset = Vector3.new(0, 1.8, 0)
-local Tag = Instance.new("TextLabel", NameTag)
-Tag.Name = "Tag"
-Tag.BackgroundTransparency = 1
-Tag.Position = UDim2.new(0, -50, 0, 0)
-Tag.Size = UDim2.new(0, 300, 0, 20)
-Tag.TextSize = 15
-Tag.TextColor3 = Color3.new(100 / 255, 100 / 255, 100 / 255)
-Tag.TextStrokeColor3 = Color3.new(0 / 255, 0 / 255, 0 / 255)
-Tag.TextStrokeTransparency = 0.4
-Tag.Text = "nil"
-Tag.Font = Enum.Font.SourceSansBold
-Tag.TextScaled = false
-
-local LoadCharacter = function(v)
-	repeat wait() until v.Character ~= nil
-	v.Character:WaitForChild("Humanoid")
-	local vHolder = Holder:FindFirstChild(v.DisplayName)
-	vHolder:ClearAllChildren()
-	local b = Box:Clone()
-	b.Name = v.DisplayName .. "Box"
-	b.Adornee = v.Character
-	b.Parent = vHolder
-	local t = NameTag:Clone()
-	t.Name = v.DisplayName .. "NameTag"
-	t.Enabled = true
-	t.Parent = vHolder
-	t.Adornee = v.Character:WaitForChild("Head", 5)
-	if not t.Adornee then
-		return UnloadCharacter(v)
-	end
-	---------------------------------------------------------------------
-	t.Tag.Text = v.DisplayName
-	b.Color3 = Color3.new(v.TeamColor.r, v.TeamColor.g, v.TeamColor.b)
-	t.Tag.TextColor3 = Color3.new(v.TeamColor.r, v.TeamColor.g, v.TeamColor.b)
-	local Update
-	local UpdateNameTag = function()
-		if not pcall(function()
-			v.Character.Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-			local maxh = math.floor(v.Character.Humanoid.MaxHealth)
-			local h = math.floor(v.Character.Humanoid.Health)
-		end) then
-			Update:Disconnect()
-		end
-	end
-	UpdateNameTag()
-	Update = v.Character.Humanoid.Changed:Connect(UpdateNameTag)
-end
-
-local UnloadCharacter = function(v)
-	local vHolder = Holder:FindFirstChild(v.DisplayName)
-	if vHolder and (vHolder:FindFirstChild(v.DisplayName .. "Box") ~= nil or vHolder:FindFirstChild(v.DisplayName .. "NameTag") ~= nil) then
-		vHolder:ClearAllChildren()
-	end
-end
-
-local LoadPlayer = function(v)
-	local vHolder = Instance.new("Folder", Holder)
-	vHolder.Name = v.DisplayName
-	v.CharacterAdded:Connect(function()
-		pcall(LoadCharacter, v)
-	end)
-	v.CharacterRemoving:Connect(function()
-		pcall(UnloadCharacter, v)
-	end)
-	v.Changed:Connect(function(prop)
-		if prop == "TeamColor" then
-			UnloadCharacter(v)
-			wait()
-			LoadCharacter(v)
-		end
-	end)
-	LoadCharacter(v)
-end
-
-local UnloadPlayer = function(v)
-	UnloadCharacter(v)
-	local vHolder = Holder:FindFirstChild(v.DisplayName)
-	if vHolder then
-		vHolder:Destroy()
-	end
-end
-
-for i,v in pairs(game:GetService("Players"):GetPlayers()) do
-	spawn(function() pcall(LoadPlayer, v) end)
-end
-
-game:GetService("Players").PlayerAdded:Connect(function(v)
-	pcall(LoadPlayer, v)
-end)
-
-game:GetService("Players").PlayerRemoving:Connect(function(v)
-	pcall(UnloadPlayer, v)
-end)
-
-game:GetService("Players").LocalPlayer.NameDisplayDistance = 0
-
-if _G.Reantheajfdfjdgs then
-    return
-end
-
-_G.Reantheajfdfjdgs = ":suifayhgvsdghfsfkajewfrhk321rk213kjrgkhj432rj34f67df"
-
-local players = game:GetService("Players")
-local plr = players.LocalPlayer
-
-function esp(target, color)
-    if target.Character then
-        if not target.Character:FindFirstChild("GetReal") then
-            local highlight = Instance.new("Highlight")
-            highlight.RobloxLocked = true
-            highlight.Name = "GetReal"
-            highlight.Adornee = target.Character
-            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-            highlight.FillColor = color
-            highlight.Parent = target.Character
-        else
-            target.Character.GetReal.FillColor = color
-        end
-    end
-end
-
-		end
-})
-
-local D = Y.Button({
-	Text = "CHAMS",
-	Callback = function()
-
-        local RunService = game:GetService("RunService")
-		local Players = game:GetService("Players")
-		local localPlayer = Players.LocalPlayer
-
-		local function createHighlights()
-			-- Clear existing highlights
-			for _, player in ipairs(Players:GetPlayers()) do
-				if player ~= localPlayer then
-					for _, highlight in ipairs(player.Character:GetChildren()) do
-						if highlight:IsA("Highlight") then
-							highlight:Destroy()
-						end
-					end
-				end
-			end
-
-			-- Create highlights for all players
-			for _, player in ipairs(Players:GetPlayers()) do
-				if player ~= localPlayer and player.Character and player.Character:FindFirstChild("Humanoid") then
-					local esp = Instance.new("Highlight")
-					esp.Name = player.Name
-					esp.FillTransparency = 1
-					esp.FillColor = Color3.new(1, 0, 0.0156863)
-					esp.OutlineColor = player.Character.Humanoid.Health > 0 and Color3.new(0.0666667, 1, 0) or Color3.new(1, 0, 0)
-					esp.OutlineTransparency = 0.28
-					esp.Parent = player.Character
-				end
-			end
-		end
-
-		-- Run the function initially
-		createHighlights()
-
-		-- Connect a function to the Heartbeat event to update the highlights
-		local updateDelay = 1 -- Update delay in seconds
-		local lastUpdateTime = 0
-
-		RunService.Heartbeat:Connect(function()
-			local currentTime = os.clock()
-			if currentTime - lastUpdateTime >= updateDelay then
-				createHighlights()
-				lastUpdateTime = currentTime
-			end
-		end)  
-
-		end
-})
-local E = Y.Button({
-	Text = "VAULT",
-	Callback = function()
-
-local doorbank = game.Workspace.BankRobbery.VaultDoor.Door
-
-
-	
-
-
-doorbank.Attachment.ProximityPrompt.HoldDuration = 0
-
-
-
-		end
-})
-
-
-local J = Y.Button({
-	Text = "CHAT",
-	Callback = function()
-
-
-local METATABLE = {['Delay'] = 1; ['Spam'] = false; ['Mouse'] = game:GetService('Players').LocalPlayer:GetMouse(); ['LocalPlayer'] = game:GetService('Players').LocalPlayer};
-
-getgenv().CHATVIEW = function()
-    local CHATVISIBLE = METATABLE['LocalPlayer'].PlayerGui.Chat.Frame 
-    CHATVISIBLE.ChatChannelParentFrame.Visible = true 
-    CHATVISIBLE.ChatBarParentFrame.Position = CHATVISIBLE.ChatChannelParentFrame.Position + UDim2.new(UDim.new(), CHATVISIBLE.ChatChannelParentFrame.Size.Y)
-end
-CHATVIEW()
-
-
-
-		end
-})
-
 local P = Y.Button({
 	Text = "EMOTES",
 	Callback = function()
@@ -693,6 +270,29 @@ CHATVIEW()
 		end
 })
 
+
+
+
+local J = Y.Button({
+	Text = "CHAT",
+	Callback = function()
+
+
+local METATABLE = {['Delay'] = 1; ['Spam'] = false; ['Mouse'] = game:GetService('Players').LocalPlayer:GetMouse(); ['LocalPlayer'] = game:GetService('Players').LocalPlayer};
+
+getgenv().CHATVIEW = function()
+    local CHATVISIBLE = METATABLE['LocalPlayer'].PlayerGui.Chat.Frame 
+    CHATVISIBLE.ChatChannelParentFrame.Visible = true 
+    CHATVISIBLE.ChatBarParentFrame.Position = CHATVISIBLE.ChatChannelParentFrame.Position + UDim2.new(UDim.new(), CHATVISIBLE.ChatChannelParentFrame.Size.Y)
+end
+CHATVIEW()
+
+
+
+		end
+})
+
+
 local J = Y.Button({
 	Text = "PAJA FUERTE",
 	Callback = function()
@@ -710,4 +310,225 @@ for _, object in pairs(allObjects) do
 end
 
 		end
+})
+
+
+
+local B = Y.Toggle({
+	Text = "ESP",
+	Callback = function(Value)
+    if Value then
+-------------------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------------------------
+
+ _G.FriendColor = Color3.fromRGB(0, 0, 255)
+ _G.EnemyColor = Color3.fromRGB(255, 0, 0)
+ _G.UseTeamColor = true -- Utiliza los colores de equipo
+ 
+ --------------------------------------------------------------------------------------------
+ local Holder = Instance.new("Folder", game.CoreGui)
+ Holder.Name = "ESP"
+ 
+ local Box = Instance.new("BoxHandleAdornment")
+ Box.Name = "nilBox"
+ Box.Size = Vector3.new(1, 2, 1)
+ Box.Color3 = Color3.new(100 / 255, 100 / 255, 100 / 255)
+ Box.Transparency = 1
+ Box.ZIndex = 0
+ Box.AlwaysOnTop = true
+ Box.Visible = false
+ --------------------------------------------------------------------------------------------
+ local NameTag = Instance.new("BillboardGui")
+ NameTag.Name = "nilNameTag"
+ NameTag.Enabled = false
+ NameTag.Size = UDim2.new(0, 200, 0, 50)
+ NameTag.AlwaysOnTop = true
+ NameTag.StudsOffset = Vector3.new(0, 1.8, 0)
+ 
+ 
+ local LoadCharacter = function(v)
+     repeat wait() until v.Character ~= nil
+     v.Character:WaitForChild("Humanoid")
+ 
+     local vHolder = Holder:FindFirstChild(v.DisplayName)
+     vHolder:ClearAllChildren()
+ 
+     local b = Box:Clone()
+     b.Name = v.DisplayName .. "Box"
+     b.Adornee = v.Character
+     b.Parent = vHolder
+ 
+     local t = NameTag:Clone()
+     t.Name = v.DisplayName .. "NameTag"
+     t.Enabled = true
+     t.Parent = vHolder
+     t.Adornee = v.Character:WaitForChild("Head", 5)
+ 
+     local nameTagText = Instance.new("TextLabel", t)
+     nameTagText.Name = "NameTagText"
+     nameTagText.BackgroundTransparency = 1
+     nameTagText.Position = UDim2.new(0, 0, 0, 0)
+     nameTagText.Size = UDim2.new(1, 0, 0.5, 0) -- Mitad superior para el nombre
+     nameTagText.TextSize = 18
+     nameTagText.TextColor3 = Color3.new(1, 1, 1)
+     nameTagText.Font = Enum.Font.SourceSansBold
+     nameTagText.TextStrokeTransparency = 0.4
+     nameTagText.Text = v.DisplayName
+ 
+     local healthLabel = Instance.new("TextLabel", t)
+     healthLabel.Name = "HealthLabel"
+     healthLabel.BackgroundTransparency = 1
+     healthLabel.Position = UDim2.new(0, 0, 0.3, 0) -- Mitad inferior para la vida
+     healthLabel.Size = UDim2.new(1, 0, 0.5, 0)
+     healthLabel.TextSize = 18
+     healthLabel.TextColor3 = Color3.new(1, 1, 1)
+     healthLabel.Font = Enum.Font.SourceSansBold
+     healthLabel.TextStrokeTransparency = 0.4
+ 
+     local function updateNameTag()
+         if v.Character and v.Character:FindFirstChild("Humanoid") then
+             local maxHealth = math.floor(v.Character.Humanoid.MaxHealth)
+             local health = math.floor(v.Character.Humanoid.Health)
+             healthLabel.Text = "" .. health .. " / " .. maxHealth
+         else
+             healthLabel.Text = ""
+         end
+     end
+ 
+     updateNameTag()
+     v.Character:WaitForChild("Humanoid").Changed:Connect(updateNameTag)
+ end
+ 
+ local UnloadCharacter = function(v)
+     local vHolder = Holder:FindFirstChild(v.DisplayName)
+     if vHolder and (vHolder:FindFirstChild(v.DisplayName .. "Box") ~= nil or vHolder:FindFirstChild(v.DisplayName .. "NameTag") ~= nil) then
+         vHolder:ClearAllChildren()
+     end
+ end
+ 
+ local LoadPlayer = function(v)
+     local vHolder = Instance.new("Folder", Holder)
+     vHolder.Name = v.DisplayName
+     v.CharacterAdded:Connect(function()
+         pcall(LoadCharacter, v)
+     end)
+     v.CharacterRemoving:Connect(function()
+         pcall(UnloadCharacter, v)
+     end)
+     v.Changed:Connect(function(prop)
+         if prop == "TeamColor" then
+             UnloadCharacter(v)
+             wait()
+             LoadCharacter(v)
+         end
+     end)
+     LoadCharacter(v)
+ end
+ 
+ local UnloadPlayer = function(v)
+     UnloadCharacter(v)
+     local vHolder = Holder:FindFirstChild(v.DisplayName)
+     if vHolder then
+         vHolder:Destroy()
+     end
+ end
+ 
+ for i,v in pairs(game:GetService("Players"):GetPlayers()) do
+     spawn(function() pcall(LoadPlayer, v) end)
+ end
+ 
+ game:GetService("Players").PlayerAdded:Connect(function(v)
+     pcall(LoadPlayer, v)
+ end)
+ 
+ game:GetService("Players").PlayerRemoving:Connect(function(v)
+     pcall(UnloadPlayer, v)
+ end)
+ 
+ game:GetService("Players").LocalPlayer.NameDisplayDistance = 0
+ 
+ if _G.Reantheajfdfjdgs then
+     return
+ end
+ 
+ _G.Reantheajfdfjdgs = ":suifayhgvsdghfsfkajewfrhk321rk213kjrgkhj432rj34f67df"
+ 
+ 
+    else
+        local scriptToRemove = game.CoreGui:FindFirstChild("ESP") -- Cambia "ESP" por el nombre del script que deseas eliminar
+
+        if scriptToRemove then
+            scriptToRemove:Remove()
+        end   
+-----------------------------------------------------------------------------------------
+
+    
+    end    
+	end,
+	Enabled = false
+})
+
+local B = Y.Toggle({
+	Text = "ITEMS",
+	Callback = function(Value)
+    if Value then
+	-- Encuentra la carpeta "Workspace.Game.Entities.ItemPickup"
+    local carpetaItemPickup = workspace:FindFirstChild("Game"):FindFirstChild("Entities"):FindFirstChild("ItemPickup")
+
+    -- Verifica si la carpeta existe
+    if carpetaItemPickup then
+        -- Itera a través de los objetos en la carpeta
+        for _, objeto in pairs(carpetaItemPickup:GetChildren()) do
+            if objeto:IsA("Model") then
+                -- Crea un BillboardGui
+                local billboard = Instance.new("BillboardGui")
+                billboard.Parent = objeto
+                billboard.AlwaysOnTop = true
+                billboard.Name = "ObjBillboard"
+                billboard.StudsOffset = Vector3.new(0, 1.8, 0)
+                billboard.Size = UDim2.new(0, 100, 0, 40) -- Tamaño del billboard
+    
+                -- Crea un TextLabel en el BillboardGui para mostrar el nombre
+                local label = Instance.new("TextLabel")
+                label.Parent = billboard
+                label.Text = "obj" -- Cambia "obj" al nombre que desees
+                label.Size = UDim2.new(1, 0, 1, 0)
+                label.BackgroundTransparency = 1
+                label.TextColor3 = Color3.new(0, 1, 00)
+                label.TextSize = 10 -- Tamaño del texto
+                label.TextStrokeTransparency = 0.4
+                label.Font = Enum.Font.SourceSansBold
+                label.TextScaled = false
+    
+                -- Alinea el TextLabel al centro del BillboardGui
+                label.Position = UDim2.new(0, 0, 0.5, 0)
+                label.AnchorPoint = Vector2.new(0, 0.5)
+            end
+        end
+    else
+        print("La carpeta 'Workspace.Game.Entities.ItemPickup' no fue encontrada.")
+    end
+    else
+-- Encuentra la carpeta "Workspace.Game.Entities.ItemPickup"
+local carpetaItemPickup = workspace:FindFirstChild("Game"):FindFirstChild("Entities"):FindFirstChild("ItemPickup")
+
+-- Verifica si la carpeta existe
+if carpetaItemPickup then
+    -- Itera a través de los objetos en la carpeta
+    for _, objeto in pairs(carpetaItemPickup:GetChildren()) do
+        -- Busca un BillboardGui con el nombre "ObjBillboard" en cada objeto
+        local billboard = objeto:FindFirstChild("ObjBillboard")
+        if billboard then
+            -- Destruye el BillboardGui si se encuentra
+            billboard:Destroy()
+        end
+    end
+else
+    print("La carpeta 'Workspace.Game.Entities.ItemPickup' no fue encontrada.")
+end
+end
+	end,
+	Enabled = false
 })
