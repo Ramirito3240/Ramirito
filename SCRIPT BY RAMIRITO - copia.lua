@@ -28,7 +28,7 @@ local FOVring = Drawing.new("Circle")
 FOVring.Visible = false
 FOVring.Thickness = 1.5
 FOVring.Radius = fov
-FOVring.Transparency = 1
+FOVring.Transparency = 0
 FOVring.Color = Color3.fromRGB(255, 128, 128)
 FOVring.Position = workspace.CurrentCamera.ViewportSize / 2
 
